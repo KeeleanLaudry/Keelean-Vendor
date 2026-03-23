@@ -399,7 +399,6 @@ const Dashboard = () => {
 
   return (
     <div className="flex min-h-screen bg-gray-100">
-      <Sidebar />
 
       <div
         className="flex-1 p-8 transition-all duration-300 overflow-auto"

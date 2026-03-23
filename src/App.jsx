@@ -9,9 +9,9 @@ import Toggleline from "./Pages/Toggleline/Toggleline";
 import CustomerOrder from "./Components/dataTable/CustomerOrder";
 import Sidebar from "./Sidebar/Sidebar";
 import Dashboard from "./Dashboard/Dashboard";
-
+ import Cloths from "./Cloths Data/Cloths";
 import ProtectedRoute from "./ProtectedRoute";
-
+import MainLayout from "./MainLayout";
 function App() {
   return (
     <Routes>
@@ -64,14 +64,17 @@ function App() {
         }
       />
 
-      <Route
-        path="/dashboard"
+            <Route
         element={
           <ProtectedRoute>
-            <Dashboard />
+            <MainLayout />
           </ProtectedRoute>
         }
-      />
+      >
+        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/cloths" element={<Cloths />} />
+      </Route>
+
     </Routes>
   );
 }

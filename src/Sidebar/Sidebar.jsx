@@ -20,7 +20,7 @@ import {
   CubeIcon,
   UserCircleIcon,
 } from "@heroicons/react/24/outline";
-
+import { useNavigate } from "react-router-dom";
 const menuConfig = [
   {
     id: "new-order",
@@ -28,6 +28,16 @@ const menuConfig = [
     icon: ShoppingBagIcon,
     items: ["New customer order", "Pending approvals", "Order updates"],
   },
+  {
+  id: "cloths",
+  label: "Cloths",
+  icon: CubeIcon,
+  items: [
+    "All Cloths",
+    "Add New Cloths",
+  
+  ],
+},
   {
     id: "pickup-requested",
     label: "Pickup Requested",
@@ -58,7 +68,7 @@ const Sidebar = () => {
   const [activeMenuId, setActiveMenuId] = useState(menuConfig[0].id);
   const [selectedItem, setSelectedItem] = useState(menuConfig[0].items[0]);
   const [isOpen, setIsOpen] = useState(true);
-
+const navigate = useNavigate();
   const activeMenu = menuConfig.find((m) => m.id === activeMenuId);
 
   return (
@@ -176,28 +186,33 @@ const Sidebar = () => {
           </div>
 
           {/* Submenu Items */}
-          <nav className="flex-1 px-4 py-4 space-y-2">
-            {activeMenu.items.map((item, index) => (
-              <button
-                key={item}
-                onClick={() => setSelectedItem(item)}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-base font-medium transition-all duration-200
-                  ${
-                    selectedItem === item
-                      ? "bg-[#F8F9FA] font-medium"
-                      : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-                  }`}
-              >
-                <div
-                  className={`w-2 h-2 rounded-full transition-colors ${
-                    selectedItem === item ? "bg-[#95A1AC]" : "bg-gray-300"
-                  }`}
-                />
-                <span className="flex-1 text-left">{item}</span>
-              
-              </button>
-            ))}
-          </nav>
+    <nav className="flex-1 px-4 py-4 space-y-2">
+  {activeMenu.items.map((item) => (
+    <button
+      key={item}
+      onClick={() => {
+        setSelectedItem(item);
+
+        if (activeMenu.id === "cloths" && item === "All Cloths") {
+          navigate("/cloths");
+        }
+      }}
+      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-base font-medium transition-all duration-200
+        ${
+          selectedItem === item
+            ? "bg-[#F8F9FA] font-medium"
+            : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+        }`}
+    >
+      <div
+        className={`w-2 h-2 rounded-full transition-colors ${
+          selectedItem === item ? "bg-[#95A1AC]" : "bg-gray-300"
+        }`}
+      />
+      <span className="flex-1 text-left">{item}</span>
+    </button>
+  ))}
+</nav>
 
           {/* Footer */}
           <div className="px-6 py-4 border-t border-gray-200 bg-gray-100">

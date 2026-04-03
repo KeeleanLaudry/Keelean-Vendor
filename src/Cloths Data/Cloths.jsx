@@ -1,448 +1,667 @@
-import React, { useState, useMemo } from "react";
-import DataTable from "../DataTable/DataTable";
-import Pagination from "../DataTable/DataPagination";
+import { useState, useMemo } from "react";
 import {
   useGetServicesQuery,
   useGetItemsQuery,
   useGetAttributeTypesQuery,
   useGetAttributeOptionsQuery,
+  useGetAddOnsQuery,
+  useGetFoldingOptionsQuery,
+  useGetCustomisationOptionsQuery,
 } from "../api/catalogApi";
+import {
+  useGetPricingQuery,
+  useCreatePricingMutation,
+  useGetItemAddOnsQuery,
+  useGetItemFoldingsQuery,
+  useGetItemCustomisationsQuery,
+  useCreateItemAddOnMutation,
+  useCreateItemFoldingMutation,
+  useCreateItemCustomisationMutation,
+} from "../api/vendorApi";
 
-import { useCreatePricingMutation } from "../api/vendorApi";
-export default function Clothesdata() {
-  const [activeTab, setActiveTab] = useState("services");
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
-  const [newEntry, setNewEntry] = useState("");
-  const [selectedAttribute, setSelectedAttribute] = useState("");
+const STEPS = ["Service", "Item", "Attributes & Price", "Add-ons", "Review"];
+const CURRENCIES = ["AED", "USD", "EUR"];
+
+export default function VendorPricingBuilder() {
+  const [step, setStep] = useState(1);
   const [selectedService, setSelectedService] = useState("");
   const [selectedItem, setSelectedItem] = useState("");
-  const [isAddPopupOpen, setIsAddPopupOpen] = useState(false);
-  const [serviceImage, setServiceImage] = useState(null);
+  const [selectedOptions, setSelectedOptions] = useState({});
+  const [price, setPrice] = useState("");
+  const [currency, setCurrency] = useState("AED");
+
+  // Step 4 — add-on selections (store ids in sets)
+  const [selectedAddOns, setSelectedAddOns] = useState([]);
+  const [selectedFolding, setSelectedFolding] = useState(null); // single
+  const [selectedCustomisations, setSelectedCustomisations] = useState([]);
+
+  // ── catalog queries ───────────────────────────────────────────────────
   const { data: services = [] } = useGetServicesQuery();
   const { data: items = [] } = useGetItemsQuery();
-  const { data: attributes = [] } = useGetAttributeTypesQuery();
+  const { data: attributeTypes = [] } = useGetAttributeTypesQuery();
   const { data: attributeOptions = [] } = useGetAttributeOptionsQuery();
+  const { data: addOns = [] } = useGetAddOnsQuery();
+  const { data: foldingOptions = [] } = useGetFoldingOptionsQuery();
+  const { data: customisationOptions = [] } = useGetCustomisationOptionsQuery();
 
-  const [createPricing] = useCreatePricingMutation();
-  const handleImageUpload = (e) => {
-    const file = e.target.files[0];
-    if (file) setServiceImage(URL.createObjectURL(file));
+  // ── vendor queries ────────────────────────────────────────────────────
+  const { data: pricings = [], refetch } = useGetPricingQuery();
+  const { data: vendorItemAddOns = [] } = useGetItemAddOnsQuery(
+    selectedItem || undefined,
+  );
+  const { data: vendorItemFoldings = [] } = useGetItemFoldingsQuery(
+    selectedItem || undefined,
+  );
+  const { data: vendorItemCustomisations = [] } = useGetItemCustomisationsQuery(
+    selectedItem || undefined,
+  );
+
+  // ── mutations ─────────────────────────────────────────────────────────
+  const [createPricing, { isLoading }] = useCreatePricingMutation();
+  const [createItemAddOn] = useCreateItemAddOnMutation();
+  const [createItemFolding] = useCreateItemFoldingMutation();
+  const [createItemCustomisation] = useCreateItemCustomisationMutation();
+
+  // ── derived ───────────────────────────────────────────────────────────
+  const filteredItems = useMemo(
+    () => items.filter((i) => i.services?.includes(Number(selectedService))),
+    [items, selectedService],
+  );
+
+  const relevantAttrTypes = useMemo(
+    () =>
+      attributeTypes.filter((at) =>
+        at.applicable_items?.includes(Number(selectedItem)),
+      ),
+    [attributeTypes, selectedItem],
+  );
+
+  const optionsForType = (typeId) =>
+    attributeOptions.filter((o) => o.attribute_type === typeId);
+
+  // Already linked ids — so vendor doesn't re-add duplicates
+  const linkedAddOnIds = vendorItemAddOns.map((x) => x.addon);
+  const linkedFoldingIds = vendorItemFoldings.map((x) => x.folding_option);
+  const linkedCustomisationIds = vendorItemCustomisations.map(
+    (x) => x.customisation_option,
+  );
+
+  // ── helpers ───────────────────────────────────────────────────────────
+  const toggleOption = (typeId, optId) => {
+    setSelectedOptions((prev) => {
+      if (prev[typeId] === optId) {
+        const next = { ...prev };
+        delete next[typeId];
+        return next;
+      }
+      return { ...prev, [typeId]: optId };
+    });
   };
 
-  let data = [];
-  if (activeTab === "services") data = services;
-  if (activeTab === "items") data = items;
-  if (activeTab === "attributes") data = attributes;
-  if (activeTab === "attributeOptions") data = attributeOptions;
+  const toggleAddOn = (id) =>
+    setSelectedAddOns((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
 
-  const totalItems = data.length;
-  const totalPages = Math.ceil(totalItems / pageSize);
+  const toggleCustomisation = (id) =>
+    setSelectedCustomisations((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
 
-  const paginatedData = useMemo(() => {
-    return data.slice((currentPage - 1) * pageSize, currentPage * pageSize);
-  }, [data, currentPage, pageSize]);
+  const resetForm = () => {
+    setStep(1);
+    setSelectedService("");
+    setSelectedItem("");
+    setSelectedOptions({});
+    setPrice("");
+    setCurrency("AED");
+    setSelectedAddOns([]);
+    setSelectedFolding(null);
+    setSelectedCustomisations([]);
+  };
 
-  // const handleConfirmAdd = () => {
-  //   if (!newEntry.trim()) return alert("Enter name");
-
-  //   if (activeTab === "services") {
-  //     setServices([
-  //       ...services,
-  //       {
-  //         id: services.length + 1,
-  //         name: newEntry,
-  //         image: serviceImage,
-  //         status: true,
-  //       },
-  //     ]);
-  //   }
-
-  //   if (activeTab === "items") {
-  //     if (!selectedService) return alert("Select service");
-
-  //     setItems([
-  //       ...items,
-  //       {
-  //         id: items.length + 1,
-  //         name: newEntry,
-  //         services: [Number(selectedService)],
-  //         status: true,
-  //       },
-  //     ]);
-  //   }
-
-  //   if (activeTab === "attributes") {
-  //     if (!selectedItem) return alert("Select item");
-
-  //     setAttributes([
-  //       ...attributes,
-  //       {
-  //         id: attributes.length + 1,
-  //         name: newEntry,
-  //         applicable_items: [Number(selectedItem)],
-  //         status: true,
-  //       },
-  //     ]);
-  //   }
-
-  //   if (activeTab === "attributeOptions") {
-  //     if (!selectedAttribute) return alert("Select attribute");
-
-  //     setAttributeOptions([
-  //       ...attributeOptions,
-  //       {
-  //         id: attributeOptions.length + 1,
-  //         name: newEntry,
-  //         attribute_type: Number(selectedAttribute),
-  //         status: true,
-  //       },
-  //     ]);
-  //   }
-
-  //   // reset
-  //   setIsAddPopupOpen(false);
-  //   setNewEntry("");
-  //   setSelectedAttribute("");
-  //   setSelectedService("");
-  //   setSelectedItem("");
-  //   setServiceImage(null);
-  // };
-  const handleConfirmAdd = async () => {
+  // ── submit ────────────────────────────────────────────────────────────
+  const handleSubmit = async () => {
     try {
-      if (!selectedService || !selectedItem || !newEntry) {
-        alert("Fill all required fields");
-        return;
-      }
-
       const formData = new FormData();
-
       formData.append("service", selectedService);
       formData.append("item", selectedItem);
-      formData.append("price", newEntry);
+      formData.append("price", price);
 
-      if (selectedAttribute) {
-        formData.append("attribute_options", selectedAttribute);
+      // attributes
+      Object.values(selectedOptions).forEach((optId) =>
+        formData.append("attribute_options", optId),
+      );
+
+      // add-ons
+      selectedAddOns.forEach((id) => formData.append("addons", id));
+
+      // folding (single)
+      if (selectedFolding) {
+        formData.append("folding_option", selectedFolding);
       }
 
-      if (serviceImage) {
-        formData.append("image", serviceImage);
-      }
+      // customisations
+      selectedCustomisations.forEach((id) =>
+        formData.append("customisation_options", id),
+      );
 
       await createPricing(formData).unwrap();
-
-      alert("Pricing added ✅");
-
-      // reset
-      setIsAddPopupOpen(false);
-      setNewEntry("");
-      setSelectedAttribute("");
-      setSelectedService("");
-      setSelectedItem("");
-      setServiceImage(null);
+      refetch();
+      resetForm();
     } catch (err) {
-      console.error(err);
-      alert("Error ❌");
+      console.error("Pricing error:", err);
+      alert(err?.data?.non_field_errors?.[0] || "Failed to add pricing");
     }
   };
 
-  const handleCancel = () => {
-    setIsAddPopupOpen(false);
-  };
+  // ── review helpers ────────────────────────────────────────────────────
+  const reviewService = services.find((s) => s.id == selectedService);
+  const reviewItem = items.find((i) => i.id == selectedItem);
+  const reviewAttrs = Object.entries(selectedOptions).map(([typeId, optId]) => {
+    const at = attributeTypes.find((a) => a.id === Number(typeId));
+    const opt = attributeOptions.find((o) => o.id === optId);
+    return { type: at?.name, option: opt?.name };
+  });
+  const reviewAddOns = addOns.filter((a) => selectedAddOns.includes(a.id));
+  const reviewFolding = foldingOptions.find((f) => f.id === selectedFolding);
+  const reviewCustomisations = customisationOptions.filter((c) =>
+    selectedCustomisations.includes(c.id),
+  );
 
-  // 🔹 STATUS TOGGLE
-  // const handleStatusToggle = (record) => {
-  //   const update = (list, setList) => {
-  //     setList(
-  //       list.map((item) =>
-  //         item.id === record.id ? { ...item, status: !item.status } : item,
-  //       ),
-  //     );
-  //   };
-
-  //   if (activeTab === "services") update(services, setServices);
-  //   if (activeTab === "items") update(items, setItems);
-  //   if (activeTab === "attributes") update(attributes, setAttributes);
-  //   if (activeTab === "attributeOptions")
-  //     update(attributeOptions, setAttributeOptions);
-  // };
-
-  // 🔹 COLUMNS (UI SAME)
-  const getColumns = () => {
-    const baseColumns = [
-      { key: "id", title: "ID" },
-      {
-        key: "name",
-        title: "Name",
-        render: (v) => <span className="font-medium text-gray-900">{v}</span>,
-      },
-    ];
-
-    if (activeTab === "services") {
-      baseColumns.push({
-        key: "image",
-        title: "Image",
-        render: (v) =>
-          v ? (
-            <img src={v} className="w-10 h-10 rounded-md" />
-          ) : (
-            <span className="text-gray-400 text-xs">No Image</span>
-          ),
-      });
-    }
-
-    if (activeTab === "items") {
-      baseColumns.push({
-        key: "services",
-        title: "Service",
-        render: (v) => services.find((s) => s.id === v?.[0])?.name || "N/A",
-      });
-    }
-
-    if (activeTab === "attributes") {
-      baseColumns.push({
-        key: "applicable_items",
-        title: "Item Type",
-        render: (v) => items.find((i) => i.id === v?.[0])?.name || "N/A",
-      });
-    }
-
-    if (activeTab === "attributeOptions") {
-      baseColumns.push({
-        key: "attribute_type",
-        title: "Attribute",
-        render: (v) => attributes.find((a) => a.id === v)?.name || "N/A",
-      });
-    }
-
-    baseColumns.push({
-      key: "status",
-      title: "Status",
-      render: (value) => (
-        <span
-          className={`px-3 py-1 rounded-full text-xs font-medium ${
-            value ? "bg-green-100 text-green-700" : "bg-red-100 text-red-600"
-          }`}
-        >
-          {value ? "Active" : "Inactive"}
-        </span>
-      ),
-    });
-
-    baseColumns.push({
-      key: "action",
-      title: "Action",
-      render: (_, record) => (
-        <button
-          onClick={() => handleStatusToggle(record)}
-          className={`px-3 py-1 rounded-md text-xs font-medium ${
-            record.status
-              ? "bg-red-100 text-red-700"
-              : "bg-green-100 text-green-700"
-          }`}
-        >
-          {record.status ? "Deactivate" : "Activate"}
-        </button>
-      ),
-    });
-    return baseColumns;
-  };
-
-  const columns = getColumns();
-
-  const tabs = [
-    { id: "services", label: "Service Categories" },
-    { id: "items", label: "Item Types" },
-    { id: "attributes", label: "Attribute Types" },
-    { id: "attributeOptions", label: "Attribute Options" },
-  ];
-  const getAddTitle = () => {
-    if (activeTab === "services") return "Service";
-    if (activeTab === "items") return "Item";
-    if (activeTab === "attributes") return "Attribute";
-    if (activeTab === "attributeOptions") return "Attribute Option";
-  };
   return (
-    <div className="w-[1100px] mx-auto my-10 font-sans">
-      {/* HEADER */}
+    <div className="max-w-2xl mx-auto py-8 px-4 font-sans">
+      {/* Header */}
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-800">Catalog Management</h1>
-        <p className="text-base text-gray-500 mt-1">
-          Manage your services, items, attributes and options
+        <h1 className="text-2xl font-semibold text-gray-800">
+          Add Service Pricing
+        </h1>
+        <p className="text-sm text-gray-500 mt-1">
+          Build a pricing combination for a service, item, and attribute options
         </p>
       </div>
 
-      {/* TABS */}
-      <div className="flex gap-2 mb-6 border-b border-gray-200">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            className={`px-6 py-3 font-medium text-sm transition-all relative ${
-              activeTab === tab.id
-                ? "text-gray-900 border-b-2 border-gray-600"
-                : "text-gray-500 hover:text-gray-700"
-            }`}
-            onClick={() => {
-              setActiveTab(tab.id);
-              setCurrentPage(1);
-            }}
-          >
-            {tab.label}
-          </button>
-        ))}
+      {/* Stepper */}
+      <div className="flex items-center mb-8 flex-wrap gap-y-2">
+        {STEPS.map((label, i) => {
+          const n = i + 1;
+          const done = step > n;
+          const active = step === n;
+          return (
+            <div key={n} className="flex items-center">
+              {i > 0 && <div className="h-px w-8 bg-gray-200 flex-shrink-0" />}
+              <div className="flex items-center gap-2">
+                <div
+                  className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-medium flex-shrink-0 transition-all
+                    ${
+                      done
+                        ? "bg-green-100 text-green-700 border border-green-200"
+                        : active
+                          ? "bg-gray-800 text-white"
+                          : "border border-gray-200 text-gray-400"
+                    }`}
+                >
+                  {done ? "✓" : n}
+                </div>
+                <span
+                  className={`text-xs whitespace-nowrap ${active ? "text-gray-800 font-medium" : "text-gray-400"}`}
+                >
+                  {label}
+                </span>
+              </div>
+            </div>
+          );
+        })}
       </div>
 
-      {/* ADD BUTTON */}
-      <div className="flex justify-end mb-4">
-        <button
-          onClick={() => setIsAddPopupOpen(true)}
-          className="flex items-center gap-2 bg-gradient-to-r from-gray-700 to-gray-800 text-white px-6 py-2.5 rounded-lg shadow-md hover:shadow-lg hover:from-gray-800 hover:to-black transition-all duration-300 active:scale-95"
-        >
-          <span className="text-lg font-bold">+</span>
-          <span className="font-medium">Add {getAddTitle()}</span>
-        </button>
-        {isAddPopupOpen && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-xl p-6 w-96 shadow-xl">
-              <h3 className="text-lg font-semibold mb-4">
-                Add {getAddTitle()}
-              </h3>
+      {/* ── Step 1 — Service ── */}
+      {step === 1 && (
+        <div className="bg-white border border-gray-200 rounded-xl p-6">
+          <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">
+            Choose a service
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            {services.map((s) => (
+              <button
+                key={s.id}
+                onClick={() => {
+                  setSelectedService(String(s.id));
+                  setSelectedItem("");
+                  setSelectedOptions({});
+                }}
+                className={`px-4 py-3 rounded-lg border text-sm font-medium text-left transition-all
+                  ${selectedService == s.id ? "bg-gray-800 text-white border-gray-800" : "border-gray-200 text-gray-700 hover:border-gray-400"}`}
+              >
+                {s.name}
+              </button>
+            ))}
+          </div>
+          <div className="flex justify-end mt-6">
+            <button
+              disabled={!selectedService}
+              onClick={() => setStep(2)}
+              className="px-5 py-2 bg-gray-800 text-white rounded-lg text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-700"
+            >
+              Next →
+            </button>
+          </div>
+        </div>
+      )}
 
-              {/* Select Service (ITEM TAB) */}
-              {activeTab === "items" && (
-                <select
-                  value={selectedService}
-                  onChange={(e) => setSelectedService(e.target.value)}
-                  className="w-full mb-3 px-3 py-2 border rounded"
+      {/* ── Step 2 — Item ── */}
+      {step === 2 && (
+        <div className="bg-white border border-gray-200 rounded-xl p-6">
+          <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">
+            Choose an item
+          </p>
+          {filteredItems.length === 0 ? (
+            <p className="text-sm text-gray-400 py-2">
+              No items available for this service.
+            </p>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              {filteredItems.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => {
+                    setSelectedItem(String(item.id));
+                    setSelectedOptions({});
+                  }}
+                  className={`px-4 py-3 rounded-lg border text-sm font-medium text-left transition-all
+                    ${selectedItem == item.id ? "bg-gray-800 text-white border-gray-800" : "border-gray-200 text-gray-700 hover:border-gray-400"}`}
                 >
-                  <option value="">Select Service</option>
-                  {services.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
-              )}
+                  {item.name}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="flex justify-between mt-6">
+            <button
+              onClick={() => setStep(1)}
+              className="px-5 py-2 border border-gray-200 text-gray-700 rounded-lg text-sm hover:bg-gray-50"
+            >
+              ← Back
+            </button>
+            <button
+              disabled={!selectedItem}
+              onClick={() => setStep(3)}
+              className="px-5 py-2 bg-gray-800 text-white rounded-lg text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-700"
+            >
+              Next →
+            </button>
+          </div>
+        </div>
+      )}
 
-              {/* Select Item */}
-              {activeTab === "attributes" && (
-                <select
-                  value={selectedItem}
-                  onChange={(e) => setSelectedItem(e.target.value)}
-                  className="w-full mb-3 px-3 py-2 border rounded"
-                >
-                  <option value="">Select Item</option>
-                  {items
-                    .filter((i) =>
-                      i.services?.includes(Number(selectedService)),
-                    )
-                    .map((i) => (
-                      <option key={i.id} value={i.id}>
-                        {i.name}
-                      </option>
-                    ))}
-                </select>
-              )}
-
-              {/* Select Attribute */}
-              {activeTab === "attributeOptions" && (
-                <select
-                  value={selectedAttribute}
-                  onChange={(e) => setSelectedAttribute(e.target.value)}
-                  className="w-full mb-3 px-3 py-2 border rounded"
-                >
-                  <option value="">Select Attribute</option>
-                  {attributes
-                    .filter((a) =>
-                      a.applicable_items?.includes(Number(selectedItem)),
-                    )
-                    .map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.name}
-                      </option>
-                    ))}
-                </select>
-              )}
-
-              {/* Image Upload */}
-              {activeTab === "services" && (
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Upload Image
-                  </label>
-
-                  <label className="flex items-center justify-center w-full px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-gray-500 transition">
-                    <span className="text-gray-500 text-sm">
-                      Click to upload image
-                    </span>
-
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleImageUpload}
-                      className="hidden"
-                    />
-                  </label>
-
-                  {/* Preview */}
-                  {serviceImage && (
-                    <img
-                      src={serviceImage}
-                      alt="preview"
-                      className="mt-3 w-20 h-20 object-cover rounded-md border"
-                    />
-                  )}
+      {/* ── Step 3 — Attributes + Price ── */}
+      {step === 3 && (
+        <div className="bg-white border border-gray-200 rounded-xl p-6">
+          {relevantAttrTypes.length === 0 ? (
+            <p className="text-sm text-gray-400 mb-4">
+              No attributes for this item — just set a price.
+            </p>
+          ) : (
+            relevantAttrTypes.map((at) => (
+              <div key={at.id} className="mb-5">
+                <p className="text-xs font-medium text-gray-500 mb-2">
+                  {at.name}{" "}
+                  <span className="font-normal text-gray-400">(pick one)</span>
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {optionsForType(at.id).map((opt) => {
+                    const isSel = selectedOptions[at.id] === opt.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        onClick={() => toggleOption(at.id, opt.id)}
+                        className={`px-4 py-2 rounded-lg border text-sm transition-all
+                          ${isSel ? "bg-gray-800 text-white border-gray-800" : "border-gray-200 text-gray-600 hover:border-gray-400"}`}
+                      >
+                        {opt.name}
+                      </button>
+                    );
+                  })}
                 </div>
-              )}
+              </div>
+            ))
+          )}
 
-              {/* Name Input */}
+          {/* Price */}
+          <div className="mt-4 pt-4 border-t border-gray-100">
+            <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">
+              Set price
+            </p>
+            <div className="flex gap-3">
               <input
-                type="text"
-                placeholder="Enter name"
-                value={newEntry}
-                onChange={(e) => setNewEntry(e.target.value)}
-                className="w-full mb-4 px-3 py-2 border rounded"
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="0.00"
+                value={price}
+                onChange={(e) => setPrice(e.target.value)}
+                className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
               />
+              <select
+                value={currency}
+                onChange={(e) => setCurrency(e.target.value)}
+                className="w-24 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
+              >
+                {CURRENCIES.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
 
-              {/* Buttons */}
-              <div className="flex justify-end gap-3">
-                <button
-                  onClick={handleCancel}
-                  className="px-4 py-2 border rounded"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleConfirmAdd}
-                  className="px-4 py-2 bg-gray-700 text-white rounded"
-                >
-                  Add
-                </button>
+          <div className="flex justify-between mt-6">
+            <button
+              onClick={() => setStep(2)}
+              className="px-5 py-2 border border-gray-200 text-gray-700 rounded-lg text-sm hover:bg-gray-50"
+            >
+              ← Back
+            </button>
+            <button
+              disabled={!price}
+              onClick={() => setStep(4)}
+              className="px-5 py-2 bg-gray-800 text-white rounded-lg text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-700"
+            >
+              Next →
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Step 4 — Add-ons, Folding, Customisation ── */}
+      {step === 4 && (
+        <div className="bg-white border border-gray-200 rounded-xl p-6 space-y-6">
+          {/* Add-ons */}
+          <div>
+            <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">
+              Add-ons{" "}
+              <span className="normal-case font-normal text-gray-400">
+                (optional — pick multiple)
+              </span>
+            </p>
+            {addOns.length === 0 ? (
+              <p className="text-sm text-gray-400">No add-ons available.</p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {addOns.map((a) => {
+                  const isSel = selectedAddOns.includes(a.id);
+                  const isLinked = linkedAddOnIds.includes(a.id);
+                  return (
+                    <button
+                      key={a.id}
+                      onClick={() => !isLinked && toggleAddOn(a.id)}
+                      className={`px-4 py-2 rounded-lg border text-sm transition-all
+                        ${
+                          isLinked
+                            ? "border-green-200 bg-green-50 text-green-600 cursor-default"
+                            : isSel
+                              ? "bg-gray-800 text-white border-gray-800"
+                              : "border-gray-200 text-gray-600 hover:border-gray-400"
+                        }`}
+                    >
+                      {a.name}
+                      {isLinked && (
+                        <span className="ml-1 text-xs">(already added)</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Folding */}
+          <div>
+            <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">
+              Folding{" "}
+              <span className="normal-case font-normal text-gray-400">
+                (optional — pick one)
+              </span>
+            </p>
+            {foldingOptions.length === 0 ? (
+              <p className="text-sm text-gray-400">
+                No folding options available.
+              </p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {foldingOptions.map((f) => {
+                  const isSel = selectedFolding === f.id;
+                  const isLinked = linkedFoldingIds.includes(f.id);
+                  return (
+                    <button
+                      key={f.id}
+                      onClick={() =>
+                        !isLinked && setSelectedFolding(isSel ? null : f.id)
+                      }
+                      className={`px-4 py-2 rounded-lg border text-sm transition-all
+                        ${
+                          isLinked
+                            ? "border-green-200 bg-green-50 text-green-600 cursor-default"
+                            : isSel
+                              ? "bg-gray-800 text-white border-gray-800"
+                              : "border-gray-200 text-gray-600 hover:border-gray-400"
+                        }`}
+                    >
+                      {f.name}
+                      {isLinked && (
+                        <span className="ml-1 text-xs">(already added)</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Customisation */}
+          <div>
+            <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">
+              Customisation{" "}
+              <span className="normal-case font-normal text-gray-400">
+                (optional — pick multiple)
+              </span>
+            </p>
+            {customisationOptions.length === 0 ? (
+              <p className="text-sm text-gray-400">
+                No customisation options available.
+              </p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {customisationOptions.map((c) => {
+                  const isSel = selectedCustomisations.includes(c.id);
+                  const isLinked = linkedCustomisationIds.includes(c.id);
+                  return (
+                    <button
+                      key={c.id}
+                      onClick={() => !isLinked && toggleCustomisation(c.id)}
+                      className={`px-4 py-2 rounded-lg border text-sm transition-all
+                        ${
+                          isLinked
+                            ? "border-green-200 bg-green-50 text-green-600 cursor-default"
+                            : isSel
+                              ? "bg-gray-800 text-white border-gray-800"
+                              : "border-gray-200 text-gray-600 hover:border-gray-400"
+                        }`}
+                    >
+                      {c.name}
+                      {isLinked && (
+                        <span className="ml-1 text-xs">(already added)</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="flex justify-between pt-2">
+            <button
+              onClick={() => setStep(3)}
+              className="px-5 py-2 border border-gray-200 text-gray-700 rounded-lg text-sm hover:bg-gray-50"
+            >
+              ← Back
+            </button>
+            <button
+              onClick={() => setStep(5)}
+              className="px-5 py-2 bg-gray-800 text-white rounded-lg text-sm font-medium hover:bg-gray-700"
+            >
+              Review →
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Step 5 — Review ── */}
+      {step === 5 && (
+        <div className="bg-white border border-gray-200 rounded-xl p-6">
+          <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-4">
+            Review combination
+          </p>
+          <div className="space-y-0 divide-y divide-gray-100">
+            <div className="flex justify-between py-3 text-sm">
+              <span className="text-gray-500">Service</span>
+              <span className="font-medium text-gray-800">
+                {reviewService?.name}
+              </span>
+            </div>
+            <div className="flex justify-between py-3 text-sm">
+              <span className="text-gray-500">Item</span>
+              <span className="font-medium text-gray-800">
+                {reviewItem?.name}
+              </span>
+            </div>
+            <div className="flex justify-between py-3 text-sm">
+              <span className="text-gray-500">Attributes</span>
+              <div className="text-right">
+                {reviewAttrs.length === 0 ? (
+                  <span className="text-gray-400">None</span>
+                ) : (
+                  reviewAttrs.map((a, i) => (
+                    <div key={i} className="font-medium text-gray-800">
+                      {a.type}: {a.option}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+            <div className="flex justify-between py-3 text-sm">
+              <span className="text-gray-500">Price</span>
+              <span className="font-semibold text-gray-900">
+                {currency} {parseFloat(price).toFixed(2)}
+              </span>
+            </div>
+
+            {/* Add-ons review */}
+            <div className="flex justify-between py-3 text-sm">
+              <span className="text-gray-500">Add-ons</span>
+              <div className="text-right">
+                {reviewAddOns.length === 0 ? (
+                  <span className="text-gray-400">None</span>
+                ) : (
+                  reviewAddOns.map((a) => (
+                    <div key={a.id} className="font-medium text-gray-800">
+                      {a.name}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Folding review */}
+            <div className="flex justify-between py-3 text-sm">
+              <span className="text-gray-500">Folding</span>
+              <span className="font-medium text-gray-800">
+                {reviewFolding?.name || (
+                  <span className="text-gray-400">None</span>
+                )}
+              </span>
+            </div>
+
+            {/* Customisation review */}
+            <div className="flex justify-between py-3 text-sm">
+              <span className="text-gray-500">Customisation</span>
+              <div className="text-right">
+                {reviewCustomisations.length === 0 ? (
+                  <span className="text-gray-400">None</span>
+                ) : (
+                  reviewCustomisations.map((c) => (
+                    <div key={c.id} className="font-medium text-gray-800">
+                      {c.name}
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           </div>
-        )}
-      </div>
 
-      {/* TABLE */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-        <DataTable data={paginatedData} columns={columns} actionMenu={false} />
-      </div>
+          <div className="flex justify-between mt-6">
+            <button
+              onClick={() => setStep(4)}
+              className="px-5 py-2 border border-gray-200 text-gray-700 rounded-lg text-sm hover:bg-gray-50"
+            >
+              ← Back
+            </button>
+            <button
+              disabled={isLoading}
+              onClick={handleSubmit}
+              className="px-5 py-2 bg-gray-800 text-white rounded-lg text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-700"
+            >
+              {isLoading ? "Submitting…" : "Confirm & Add ✓"}
+            </button>
+          </div>
+        </div>
+      )}
 
-      {/* Pagination */}
-      <div className="mt-4">
-        <Pagination
-          currentPage={currentPage}
-          totalPages={totalPages}
-          totalItems={totalItems}
-          pageSize={pageSize}
-          onPageChange={setCurrentPage}
-          onPageSizeChange={(size) => {
-            setPageSize(size);
-            setCurrentPage(1);
-          }}
-        />
-      </div>
+      {/* ── Existing pricings list ── */}
+      {pricings.length > 0 && (
+        <div className="mt-10">
+          <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">
+            Your pricing combinations
+          </p>
+          <div className="space-y-2">
+            {pricings.map((p) => {
+              const svc = services.find((s) => s.id === p.service);
+              const itm = items.find((i) => i.id === p.item);
+              const opts =
+                p.attribute_options?.map((oid) => {
+                  const opt = attributeOptions.find((o) => o.id === oid);
+                  const at = attributeTypes.find(
+                    (a) => a.id === opt?.attribute_type,
+                  );
+                  return `${at?.name}: ${opt?.name}`;
+                }) || [];
+
+              return (
+                <div
+                  key={p.id}
+                  className="flex items-center justify-between px-4 py-3 bg-gray-50 border border-gray-100 rounded-lg text-sm"
+                >
+                  <div>
+                    <span className="font-medium text-gray-800">
+                      {svc?.name}
+                    </span>
+                    <span className="text-gray-400 mx-1">/</span>
+                    <span className="text-gray-700">{itm?.name}</span>
+                    {opts.length > 0 && (
+                      <span className="text-gray-400 ml-2">
+                        · {opts.join(", ")}
+                      </span>
+                    )}
+                  </div>
+                  <span className="px-2.5 py-0.5 bg-green-100 text-green-700 rounded-full text-xs font-medium">
+                    AED {parseFloat(p.price).toFixed(2)}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

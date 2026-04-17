@@ -7,7 +7,7 @@ export const authApi = baseApi.injectEndpoints({
     // -----------------------------------
     requestOtp: builder.mutation({
       query: ({ phone }) => ({
-        url: "/vendor/request-otp/",
+        url: "/api/vendor/request-otp/",
         method: "POST",
         body: { phone },
       }),
@@ -18,7 +18,7 @@ export const authApi = baseApi.injectEndpoints({
     // -----------------------------------
     verifyOtp: builder.mutation({
       query: ({ phone, otp }) => ({
-        url: "/vendor/verify-otp/",
+        url: "/api/vendor/verify-otp/",
         method: "POST",
         body: { phone, otp },
       }),
@@ -29,7 +29,7 @@ export const authApi = baseApi.injectEndpoints({
     // -----------------------------------
     uploadVendorProfile: builder.mutation({
       query: (formData) => ({
-        url: "/vendor/upload-profile/",
+        url: "/api/vendor/upload-profile/",
         method: "POST",
         body: formData,
       }),
@@ -39,13 +39,13 @@ export const authApi = baseApi.injectEndpoints({
     // -----------------------------------
     // 4) Get Vendor Profile
     // -----------------------------------
-  getVendorProfile: builder.query({
-  query: () => ({
-    url: "/vendor/get-profile/",
-    method: "GET",
-  }),
-  providesTags: ["VendorProfile"],
-}),
+    getVendorProfile: builder.query({
+      query: () => ({
+        url: "/api/vendor/get-profile/",
+        method: "GET",
+      }),
+      providesTags: ["VendorProfile"],
+    }),
   }),
 });
 

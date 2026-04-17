@@ -1,50 +1,20 @@
-// src/api/catalogApi.js
+// src/api/vendorPricingApi.js
+// RTK Query endpoints for Vendor Pricing Spreadsheet
+// Backend: /api/vendor/pricing/* (VendorPricingViewSet)
 
 import { baseApi } from "./baseApi";
 
-export const catalogApi = baseApi.injectEndpoints({
+export const vendorPricingApi = baseApi.injectEndpoints({
   endpoints: (builder) => ({
-    // Services
-    getServices: builder.query({
-      query: () => "/api/catalog/services/",
-      providesTags: ["Service"],
-    }),
-
-    // Categories
-    getCategories: builder.query({
-      query: () => "/api/catalog/categories/",
-      providesTags: ["Category"],
-    }),
-
-    getCategoriesByService: builder.query({
-      query: (serviceId) =>
-        `/api/catalog/categories/by-service/?service_id=${serviceId}`,
-      providesTags: ["Category"],
-    }),
-
-    // Subcategories
-    getSubcategories: builder.query({
-      query: () => "/api/catalog/subcategories/",
-      providesTags: ["Subcategory"],
-    }),
-
-    getSubcategoriesByCategory: builder.query({
-      query: (categoryId) =>
-        `/api/catalog/subcategories/by-category/?category_id=${categoryId}`,
-      providesTags: ["Subcategory"],
-    }),
-
-    // Items
-    getItems: builder.query({
-      query: () => "/api/catalog/items/",
-      providesTags: ["Item"],
-    }),
+    // ─── SPREADSHEET DATA ───
+    // GET /api/vendor/pricing/spreadsheet_view/?service_id=&category_id=&subcategory_id=&item_id=
     getSpreadsheetView: builder.query({
-      query: ({ serviceId, categoryId, subcategoryId } = {}) => {
+      query: ({ serviceId, categoryId, subcategoryId, itemId } = {}) => {
         const params = new URLSearchParams();
         if (serviceId) params.append("service_id", serviceId);
         if (categoryId) params.append("category_id", categoryId);
         if (subcategoryId) params.append("subcategory_id", subcategoryId);
+        if (itemId) params.append("item_id", itemId); // ✨ NEW
         const qs = params.toString();
         return `/api/vendor/pricing/spreadsheet_view/${qs ? `?${qs}` : ""}`;
       },
@@ -52,15 +22,12 @@ export const catalogApi = baseApi.injectEndpoints({
     }),
 
     // ─── STATS ───
-    // GET /api/vendor/pricing/stats/
-    // Returns: { total_rules, coverage_percentage, missing_items_count, pricing_by_level, average_price }
     getPricingStats: builder.query({
       query: () => "/api/vendor/pricing/stats/",
       providesTags: ["Pricing"],
     }),
 
     // ─── SINGLE CRUD ───
-    // POST /api/vendor/pricing/
     createPricing: builder.mutation({
       query: (data) => ({
         url: "/api/vendor/pricing/",
@@ -80,7 +47,6 @@ export const catalogApi = baseApi.injectEndpoints({
       invalidatesTags: ["Pricing"],
     }),
 
-    // DELETE /api/vendor/pricing/{id}/
     deletePricing: builder.mutation({
       query: (id) => ({
         url: `/api/vendor/pricing/${id}/`,
@@ -90,7 +56,6 @@ export const catalogApi = baseApi.injectEndpoints({
     }),
 
     // ─── BULK OPERATIONS ───
-    // POST /api/vendor/pricing/bulk_create/
     bulkCreatePricing: builder.mutation({
       query: (data) => ({
         url: "/api/vendor/pricing/bulk_create/",
@@ -100,8 +65,6 @@ export const catalogApi = baseApi.injectEndpoints({
       invalidatesTags: ["Pricing"],
     }),
 
-    // POST /api/vendor/pricing/bulk_update/
-    // Body: { ids: [...], base_price: 15.00 }
     bulkUpdatePricing: builder.mutation({
       query: (data) => ({
         url: "/api/vendor/pricing/bulk_update/",
@@ -111,8 +74,6 @@ export const catalogApi = baseApi.injectEndpoints({
       invalidatesTags: ["Pricing"],
     }),
 
-    // POST /api/vendor/pricing/bulk_delete/
-    // Body: { ids: [...] }
     bulkDeletePricing: builder.mutation({
       query: (data) => ({
         url: "/api/vendor/pricing/bulk_delete/",
@@ -122,35 +83,27 @@ export const catalogApi = baseApi.injectEndpoints({
       invalidatesTags: ["Pricing"],
     }),
 
-    getItemsFiltered: builder.query({
-      query: ({ serviceId, categoryId, subcategoryId }) => {
-        const params = new URLSearchParams();
-        if (serviceId) params.append("service_id", serviceId);
-        if (categoryId) params.append("category_id", categoryId);
-        if (subcategoryId) params.append("subcategory_id", subcategoryId);
-        return `/api/catalog/items/filtered/?${params.toString()}`;
-      },
-      providesTags: ["Item"],
+    // ─── CSV ───
+    importCSV: builder.mutation({
+      query: (formData) => ({
+        url: "/api/vendor/pricing/import_csv/",
+        method: "POST",
+        body: formData,
+      }),
+      invalidatesTags: ["Pricing"],
     }),
 
-    // Catalog Tree (everything in one call)
-    getCatalogTree: builder.query({
-      query: () => "/api/catalog/tree/",
-      providesTags: ["Service", "Category", "Subcategory", "Item"],
+    exportCSV: builder.query({
+      query: () => ({
+        url: "/api/vendor/pricing/export_csv/",
+        responseHandler: (response) => response.blob(),
+      }),
     }),
   }),
   overrideExisting: false,
 });
 
 export const {
-  useGetServicesQuery,
-  useGetCategoriesQuery,
-  useGetCategoriesByServiceQuery,
-  useGetSubcategoriesQuery,
-  useGetSubcategoriesByCategoryQuery,
-  useGetItemsQuery,
-  useGetItemsFilteredQuery,
-  useGetCatalogTreeQuery,
   useGetSpreadsheetViewQuery,
   useGetPricingStatsQuery,
   useCreatePricingMutation,
@@ -161,4 +114,4 @@ export const {
   useBulkDeletePricingMutation,
   useImportCSVMutation,
   useLazyExportCSVQuery,
-} = catalogApi;
+} = vendorPricingApi;

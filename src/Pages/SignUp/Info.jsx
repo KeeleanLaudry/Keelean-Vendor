@@ -606,7 +606,7 @@ export default function ProfessionalBusinessSetup() {
       );
 
       const response = await fetch(
-        "http://localhost:8000/vendor/upload-profile/",
+        "http://localhost:8000/api/vendor/upload-profile/",
         {
           method: "POST",
           headers: {

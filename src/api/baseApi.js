@@ -54,8 +54,11 @@ export const baseApi = createApi({
     "Pricing",
     "Service",
     "Item",
+    "Category", // ← ADD THIS
+    "Subcategory",
     "AttributeType",
     "AttributeOption",
+    "Pricing",
   ],
 
   endpoints: () => ({}),
